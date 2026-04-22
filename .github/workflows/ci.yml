@@ -89,9 +89,19 @@ jobs:
               run: |
                 curl http://localhost:8000/jobs || true
 
-            # DEPLOY STAGE (SIMULATED VPS DEPLOY)
-            - name: Deploy (simulated)
+            # DEPLOY STAGE 
+            - name: Deploy to EC2
               if: github.ref == 'refs/heads/main'
-              run: |
-                echo "Deploying to server..."
-                echo "In real setup you'd SSH into VPS and run docker compose pull && up -d"  
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                host: ${{ secrets.HOST }}
+                username: ${{ secrets.USER }}
+                key: ${{ secrets.SSH_KEY }}
+                script: |
+                    cd ~/hng-stage2/hng14-stage2-devops
+
+                    git pull origin main
+
+                    docker compose down
+
+                    docker compose up -d --build  

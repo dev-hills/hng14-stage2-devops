@@ -7,7 +7,7 @@ COPY . .
 FROM node:20-alpine
 WORKDIR /app
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl=8.5.0-r0
 
 
 COPY --from=builder /app /app

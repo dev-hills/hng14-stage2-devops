@@ -2,69 +2,113 @@ name: HNG Stage 2 CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
+
     services:
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
 
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
+      # --------------------
       # LINT
+      # --------------------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install frontend deps
+      - name: Install frontend dependencies
         run: |
           cd frontend
           npm install
 
-      - name: Lint frontend (basic check)
+      - name: Run ESLint
         run: |
           cd frontend
-          npx eslint . || true
+          npx eslint .
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: "3.11"
 
       - name: Install API dependencies
         run: |
           cd api
           pip install -r requirements.txt
+          pip install flake8 pytest pytest-cov
 
-      - name: Install Worker dependencies
+      - name: Run flake8
         run: |
-          cd worker
-          pip install -r requirements.txt 
+          flake8 api
+          flake8 worker
 
-      # TEST STAGE    
+      - name: Run Hadolint API
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: api/Dockerfile
 
-      - name: Run API basic test
+      - name: Run Hadolint Frontend
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: frontend/Dockerfile
+
+      - name: Run Hadolint Worker
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: worker/Dockerfile
+
+      # --------------------
+      # TEST
+      # --------------------
+      - name: Run pytest
         run: |
           cd api
-          python -c "from main import app; print('API imports OK')"
+          pytest --cov=. --cov-report=xml
 
-      # BUILD STAGE (Docker)
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: api/coverage.xml
+
+      # --------------------
+      # BUILD
+      # --------------------
       - name: Build Docker images
         run: |
-          docker build -t api-image ./api
-          docker build -t worker-image ./worker
-          docker build -t frontend-image ./frontend
+          docker build -t localhost:5000/api:${{ github.sha }} -t localhost:5000/api:latest ./api
+          docker build -t localhost:5000/frontend:${{ github.sha }} -t localhost:5000/frontend:latest ./frontend
+          docker build -t localhost:5000/worker:${{ github.sha }} -t localhost:5000/worker:latest ./worker
 
-      # SECURITY SCAN    
+      - name: Push images to local registry
+        run: |
+          docker push localhost:5000/api:${{ github.sha }}
+          docker push localhost:5000/api:latest
+          docker push localhost:5000/frontend:${{ github.sha }}
+          docker push localhost:5000/frontend:latest
+          docker push localhost:5000/worker:${{ github.sha }}
+          docker push localhost:5000/worker:latest
 
+      # --------------------
+      # SECURITY SCAN
+      # --------------------
       - name: Install Trivy
         run: |
           sudo apt-get update
@@ -72,26 +116,49 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       - name: Scan API image
-        run: trivy image --exit-code 1 --severity CRITICAL api-image || true
+        run: |
+          trivy image \
+            --severity CRITICAL \
+            --exit-code 1 \
+            --format sarif \
+            --output trivy-results.sarif \
+            localhost:5000/api:latest
 
+      - name: Upload SARIF report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-results.sarif
+
+      # --------------------
       # INTEGRATION TEST
-
+      # --------------------
       - name: Start stack
-        run: |
-          docker compose up -d
+        run: docker compose up -d
 
-      - name: Wait for API
+      - name: Wait for services
+        run: sleep 15
+
+      - name: Integration test
         run: |
-          sleep 10
+          curl -f http://localhost:3000
           curl -f http://localhost:8000/health
 
-      - name: Test endpoint flow
-        run: |
-          curl http://localhost:8000/jobs || true
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
 
-      # DEPLOY STAGE (SIMULATED VPS DEPLOY)
-      - name: Deploy (simulated)
+      # --------------------
+      # DEPLOY
+      # --------------------
+      - name: Rolling deploy simulation
         if: github.ref == 'refs/heads/main'
         run: |
-          echo "Deploying to server..."
-          echo "In real setup you'd SSH into VPS and run docker compose pull && up -d"   
+          docker compose up -d
+          sleep 10
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q api))
+          if [ "$STATUS" != "healthy" ]; then
+            echo "Health check failed. Aborting deploy."
+            exit 1
+          fi
+          echo "Deployment successful"

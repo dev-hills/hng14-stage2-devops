@@ -10,8 +10,13 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    mem_limit: 256m
-    cpus: 0.5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    
 
   api:
     build: ./api
@@ -25,8 +30,13 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    mem_limit: 256m
-    cpus: 0.5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    
 
   worker:
     build: ./worker
@@ -38,8 +48,13 @@ services:
         condition: service_healthy
     networks:
       - app-network
-    mem_limit: 256m
-    cpus: 0.5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    
 
   redis:
     image: redis:7-alpine
@@ -50,8 +65,13 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    mem_limit: 128m
-    cpus: 0.25
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    
 
 networks:
   app-network:

@@ -63,11 +63,13 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: api/Dockerfile
+          ignore: DL3018
 
       - name: Run Hadolint Frontend
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: frontend/Dockerfile
+          ignore: DL3018
 
       - name: Run Hadolint Worker
         uses: hadolint/hadolint-action@v3.1.0

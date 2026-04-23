@@ -8,7 +8,7 @@ COPY . .
 FROM python:3.11-alpine
 WORKDIR /app
 
-RUN apk add --no-cache curl=8.5.0-r0
+RUN apk add --no-cache curl
 
 COPY --from=builder /install /usr/local
 COPY --from=builder /app /app

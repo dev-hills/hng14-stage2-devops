@@ -1,107 +1,97 @@
 name: HNG Stage 2 CI/CD Pipeline
 
 on:
-    push:
-        branches: [ main ]
-    pull_request:
+  push:
+    branches: [ main ]
+  pull_request:
 
 jobs:
-    pipeline:
-        runs-on: ubuntu-latest
-        services:
-            redis:
-                image: redis:7-alpine
-                ports:
-                    - 6379:6379
+  pipeline:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-            # LINT
-            - name: Setup Node
-              uses: actions/setup-node@v4
-              with:
-                  node-version: 20
+      # LINT
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-            - name: Install frontend deps
-              run: |
-                  cd frontend
-                  npm install
+      - name: Install frontend deps
+        run: |
+          cd frontend
+          npm install
 
-            - name: Lint frontend (basic check)
-              run: |
-                  cd frontend
-                  npx eslint . || true
+      - name: Lint frontend (basic check)
+        run: |
+          cd frontend
+          npx eslint . || true
 
-            - name: Setup Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: 3.11
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
 
-            - name: Install API dependencies
-              run: |
-                  cd api
-                  pip install -r requirements.txt
+      - name: Install API dependencies
+        run: |
+          cd api
+          pip install -r requirements.txt
 
-            - name: Install Worker dependencies
-              run: |
-                  cd worker
-                  pip install -r requirements.txt 
+      - name: Install Worker dependencies
+        run: |
+          cd worker
+          pip install -r requirements.txt 
 
-            # TEST STAGE    
+      # TEST STAGE    
 
-            - name: Run API basic test
-              run: |
-                  cd api
-                  python -c "from main import app; print('API imports OK')"
+      - name: Run API basic test
+        run: |
+          cd api
+          python -c "from main import app; print('API imports OK')"
 
-            # BUILD STAGE (Docker)
-            - name: Build Docker images
-              run: |
-                  docker build -t api-image ./api
-                  docker build -t worker-image ./worker
-                  docker build -t frontend-image ./frontend
+      # BUILD STAGE (Docker)
+      - name: Build Docker images
+        run: |
+          docker build -t api-image ./api
+          docker build -t worker-image ./worker
+          docker build -t frontend-image ./frontend
 
-            # SECURITY SCAN    
+      # SECURITY SCAN    
 
-            - name: Install Trivy
-              run: |
-                sudo apt-get update
-                sudo apt-get install -y wget curl
-                curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
-            - name: Scan API image
-              run: trivy image --exit-code 1 --severity CRITICAL api-image || true
+      - name: Scan API image
+        run: trivy image --exit-code 1 --severity CRITICAL api-image || true
 
-            # INTEGRATION TEST
-      
-            - name: Start stack
-              run: |
-                docker compose up -d
+      # INTEGRATION TEST
 
-            - name: Wait for API
-              run: |
-                sleep 10
-                curl -f http://localhost:8000/health
+      - name: Start stack
+        run: |
+          docker compose up -d
 
-            - name: Test endpoint flow
-              run: |
-                curl http://localhost:8000/jobs || true
+      - name: Wait for API
+        run: |
+          sleep 10
+          curl -f http://localhost:8000/health
 
-            # DEPLOY STAGE 
-            - name: Deploy to EC2
-              if: github.ref == 'refs/heads/main'
-              uses: appleboy/ssh-action@v1.0.3
-              with:
-                host: ${{ secrets.HOST }}
-                username: ${{ secrets.USER }}
-                key: ${{ secrets.SSH_KEY }}
-                script: |
-                    cd ~/hng-stage2/hng14-stage2-devops
+      - name: Test endpoint flow
+        run: |
+          curl http://localhost:8000/jobs || true
 
-                    git pull origin main
-
-                    docker compose down
-
-                    docker compose up -d --build  
+      # DEPLOY STAGE (SIMULATED VPS DEPLOY)
+      - name: Deploy (simulated)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Deploying to server..."
+          echo "In real setup you'd SSH into VPS and run docker compose pull && up -d"   
